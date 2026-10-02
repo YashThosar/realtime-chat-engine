@@ -49,3 +49,19 @@ class RoomMemberOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class MessageCreate(BaseModel):
+    content: str
+    client_msg_id: str
+
+
+class MessageOut(BaseModel):
+    id: uuid.UUID
+    room_id: uuid.UUID
+    sender_id: uuid.UUID
+    content: str
+    seq: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
