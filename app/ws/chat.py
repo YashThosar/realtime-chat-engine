@@ -1,3 +1,4 @@
+import traceback
 import uuid
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -46,7 +47,7 @@ async def websocket_room(websocket: WebSocket, room_id: uuid.UUID, token: str = 
                 continue
 
             async with AsyncSessionLocal() as db:
-                # idempotency check — same as the REST endpoint
+                # idempotency check, same as the REST endpoint
                 result = await db.execute(
                     select(Message).where(
                         Message.room_id == room_id, Message.client_msg_id == client_msg_id
@@ -77,12 +78,18 @@ async def websocket_room(websocket: WebSocket, room_id: uuid.UUID, token: str = 
                         await db.rollback()
                         result = await db.execute(
                             select(Message).where(
-                                Message.room_id == room_id, Message.client_msg_id == client_msg_id
+                                Message.room_id == room_id,
+                                Message.client_msg_id == client_msg_id,
                             )
                         )
                         message = result.scalar_one_or_none()
 
-                        payload = {
+            if message is None:
+                await websocket.send_json({"error": "could not save message, please retry"})
+                continue
+
+            # payload yahan banta hai: save ke baad, publish se pehle, har message ke liye
+            payload = {
                 "id": str(message.id),
                 "room_id": str(message.room_id),
                 "sender_id": str(message.sender_id),
@@ -93,7 +100,7 @@ async def websocket_room(websocket: WebSocket, room_id: uuid.UUID, token: str = 
             try:
                 await publish_to_room(room_id, payload)
             except Exception:
-                # message DB mein safe hai, sirf live delivery fail hui
+                traceback.print_exc()
                 await websocket.send_json(
                     {"error": "saved, but live delivery failed", "seq": message.seq}
                 )
